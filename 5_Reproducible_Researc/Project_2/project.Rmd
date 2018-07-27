@@ -1,0 +1,315 @@
+---
+title: "Health and Economic impacts of Severe Weather in the US"
+author: "Nick Plummer"
+date: "22/07/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Synopsis
+Storms and severe weather can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This assignment explores the effect of events between 1950 and 2011 from the US NOAA storm database on:
+
+1. Population (fatalities and injuries)
+2. Economy (property damage estimates)
+
+Data documentation:
+
+- [National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+- [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+## 2. Data processing
+
+Initiate R with packages required for the analysis
+
+```{r Setup}
+library(knitr)
+library(ggplot2)
+library(gtable)
+library(dplyr)
+```
+
+### 2.1 Import data
+
+Raw data is acquired from a bzip2 compressed CSV file [on the course website](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2), and subsetted to focus only on health and economic consequences.
+
+```{r DataLoading}
+# Download file if it doesn't exist
+if(!file.exists("repdata-data-StormData.csv.bz2")) {  
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
+                destfile = "repdata-data-StormData.csv.bz2", method = "curl")}
+storm <- read.csv("repdata-data-StormData.csv.bz2")
+
+# Select only data with relevance to this analysis
+storm <- tbl_df(subset(storm, (FATALITIES>0|INJURIES>0|PROPDMG>0|CROPDMG>0)))
+
+# Extract year from date
+storm$YEAR <- as.numeric(format(as.Date(storm$BGN_DATE, "%m/%d/%Y %H :%M :%S"), "%Y"))
+```
+
+### 2.2 Economic data correction
+
+Economic data is stored as value (eg PROPDMG) and the exponent (eg PROPDMGEXP), so we need to translate the exponent into a power and correct the cost by this:
+
+```{r CorrectingExponents}
+
+# Create function to derive correct exponent
+getExp <- function(e) {
+  if (e %in% c("h", "H"))
+    return(2)
+  else if (e %in% c("k", "K"))
+    return(3)
+  else if (e %in% c("m", "M"))
+    return(6)
+  else if (e %in% c("b", "B"))
+    return(9)
+  else if (!is.na(as.numeric(e))) 
+    return(as.numeric(e))
+  else if (e %in% c("", "-", "?", "+"))
+    return(0)
+  else {
+    stop("Invalid value.")
+    }
+}
+
+# Calculate correct values
+propExp <- sapply(storm$PROPDMGEXP, FUN=getExp)
+storm$PROPDAMAGE <- storm$PROPDMG * (10 ** propExp)
+rm(propExp)
+cropExp <- sapply(storm$CROPDMGEXP, FUN=getExp)
+storm$CROPDAMAGE <- storm$CROPDMG * (10 ** cropExp)
+rm(cropExp)
+
+# Subset for only relevant health and economic data
+storm <- storm[,c("BGN_DATE", "YEAR", "EVTYPE",  # Event data
+                  "FATALITIES", "INJURIES",      # Health data
+                  "PROPDAMAGE", "CROPDAMAGE")]   # Economic data
+```
+
+### 2.3 Clarify event names
+
+Normalise event names (there's probably a quicker way to do this with REGEXP - please [let me know](mailto:nickplummer@cantab.net) if so!)
+
+```{r Event names}
+# Hurricane
+storm$EVTYPE <- gsub("^HURRICANE/TYPHOON$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TROPICAL STORM$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HURRICANE ERIN$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HURRICANE EMILY$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HURRICANE OPAL$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HURRICANE OPAL/HIGH WINDS$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TYPHOON$", "HURRICANE", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TROPICAL STORM JERRY$", "HURRICANE", storm$EVTYPE)
+# Tornado
+storm$EVTYPE <- gsub("^TORNADOES, TSTM WIND, HAIL$", "TORNADO", storm$EVTYPE)
+storm$EVTYPE <- gsub("^WATERSPOUT$", "TORNADO", storm$EVTYPE)
+storm$EVTYPE <- gsub("^WATERSPOUT/TORNADO$", "TORNADO", storm$EVTYPE)
+# Thunderstorm
+storm$EVTYPE <- gsub("^THUNDERSTORM WINDS$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^THUNDERSTORM WIND$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TSTM WIND$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^MARINE THUNDERSTORM WIND$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^MARINE TSTM WIND$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TSTM WIND/HAIL$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^THUNDERSTORM WINDS HAIL$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^TSTM WIND (G45)$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^THUNDERSTORM WINDSS$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^THUNDERSTORM WINDS/HAIL$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^SEVERE THUNDERSTORM$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^SEVERE THUNDERSTORMS$", "THUNDERSTORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^SEVERE THUNDERSTORM WINDS$", "THUNDERSTORM", storm$EVTYPE)
+# Heavy rain
+storm$EVTYPE <- gsub("^FREEZING RAIN$", "HEAVY RAIN", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY RAINS$", "HEAVY RAIN", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY RAIN/SEVERE WEATHER$", "HEAVY RAIN", storm$EVTYPE)
+storm$EVTYPE <- gsub("^EXCESSIVE WETNESS$", "HEAVY RAIN", storm$EVTYPE)
+# Wind
+storm$EVTYPE <- gsub("^STRONG WINDS$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^STRONG WIND$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^MARINE STRONG WIND$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HIGH WINDS$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HIGH WIND$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^GUSTY WINDS$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^MARINE HIGH WIND$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^WINDS$", "WIND", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HIGH WINDS/COLD$", "WIND", storm$EVTYPE)
+# Flood
+storm$EVTYPE <- gsub("^FLASH FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FLOOD/FLASH FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FLASH FLOOD/FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FLASH FLOODING$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FLOODING$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^URBAN/SML STREAM FLD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^URBAN FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^URBAN FLOODING$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^RIVER FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^River Flooding$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^MAJOR FLOOD$", "FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FLOOD/RAIN/WINDS$", "FLOOD", storm$EVTYPE)
+# Coastal flood
+storm$EVTYPE <- gsub("^COASTAL FLOODING$", "COASTAL FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COSTAL FLOOD$", "COASTAL FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Coastal Flood$", "COASTAL FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COASTAL FLOODING/EROSION$", "COASTAL FLOOD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Erosion/Cstl Flood$", "COASTAL FLOOD", storm$EVTYPE)
+# Fog
+storm$EVTYPE <- gsub("^DENSE FOG$", "FOG", storm$EVTYPE)
+# Snow
+storm$EVTYPE <- gsub("^LAKE-EFFECT SNOW$", "SNOW", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Light Snow$", "SNOW", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY SNOW SQUALLS$", "SNOW", storm$EVTYPE)
+storm$EVTYPE <- gsub("^EXCESSIVE SNOW$", "SNOW", storm$EVTYPE)
+# Extreme Heat
+storm$EVTYPE <- gsub("^EXCESSIVE HEAT$", "EXTREME HEAT", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAT$", "EXTREME HEAT", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAT WAVE$", "EXTREME HEAT", storm$EVTYPE)
+storm$EVTYPE <- gsub("^UNSEASONABLY WARM AND DRY$", "EXTREME HEAT", storm$EVTYPE)
+storm$EVTYPE <- gsub("^RECORD/EXCESSIVE HEAT$", "EXTREME HEAT", storm$EVTYPE)
+# Extreme Cold
+storm$EVTYPE <- gsub("^COLD$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^EXTREME WINDCHILL$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^EXTREME COLD/WIND CHILL$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COLD/WIND CHILL$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^LOW TEMPERATURE$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COLD WEATHER$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COLD AND SNOW$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^RECORD COLD$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FROST/FREEZE$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FREEZE$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^FROST$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Early Frost$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^DAMAGING FREEZE$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Damaging Freeze$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^COLD AND WET CONDITIONS$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^AGRICULTURAL FREEZE$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^UNSEASONABLY COLD$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^Extreme Cold$", "EXTREME COLD", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HARD FREEZE$", "EXTREME COLD", storm$EVTYPE)
+# Winter Storm			 	
+storm$EVTYPE <- gsub("^WINTER WEATHER$", "WINTER STORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^WINTER WEATHER/MIX$", "WINTER STORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^ICE STORM$", "WINTER STORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY SNOW$", "WINTER STORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^BLIZZARD$", "WINTER STORM", storm$EVTYPE)
+storm$EVTYPE <- gsub("^WINTER STORM HIGH WINDS$", "WINTER STORM", storm$EVTYPE)
+# Snow
+storm$EVTYPE <- gsub("^LIGHT SNOW$", "SNOW", storm$EVTYPE)
+# Rip current
+storm$EVTYPE <- gsub("^RIP CURRENTS$", "RIP CURRENT", storm$EVTYPE)
+# High seas
+storm$EVTYPE <- gsub("^HIGH SURF$", "HIGH SEAS", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY SURF/HIGH SURF$", "HIGH SEAS", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HEAVY SURF$", "HIGH SEAS", storm$EVTYPE)
+storm$EVTYPE <- gsub("^HIGH TIDES$", "HIGH SEAS", storm$EVTYPE)
+# Wildfire
+storm$EVTYPE <- gsub("WILD/FOREST FIRE$", "WILDFIRE", storm$EVTYPE)
+storm$EVTYPE <- gsub("WILD FIRES$", "WILDFIRE", storm$EVTYPE)
+storm$EVTYPE <- gsub("WILDFIRES$", "WILDFIRE", storm$EVTYPE)
+# Storm Surge
+storm$EVTYPE <- gsub("STORM SURGE/TIDE$", "STORM SURGE", storm$EVTYPE)
+
+storm$EVTYPE <- as.factor(storm$EVTYPE)
+```
+
+Finally create a cached version to avoid having to do future lengthy calculations
+
+```{r caching}
+storm.cache <- storm
+```
+
+### 2.4 Health data
+
+Extract health data for seperate analyses, and select the 10 most common causes of mortality and morbidity:
+
+```{r health data}
+
+# Fatalities
+fatality <- subset(storm, FATALITIES > 0) %>% group_by(EVTYPE) %>% summarise(Fatalities=sum(FATALITIES))
+fatality <- fatality[order(fatality$Fatalities, decreasing = T), ]
+fatality <- fatality[1:10,]
+
+injury <- subset(storm, INJURIES > 0) %>% group_by(EVTYPE) %>% summarise(Injuries=sum(INJURIES))
+injury <- injury[order(injury$Injuries, decreasing = T), ]
+injury <- injury[1:10,]
+```
+
+
+
+### 2.5 Economic data
+
+Similarly extract only the financial damage, and select the 10 most common causes for crops and property damage.
+
+```{r economic data}
+property <- subset(storm, PROPDAMAGE>0) %>% group_by(EVTYPE) %>% summarise(Property=sum(PROPDAMAGE))
+property <- property[order(property$Property, decreasing = T),]
+property <- property[1:10,]
+
+crops <- subset(storm, CROPDAMAGE>0) %>% group_by(EVTYPE) %>% summarise(Crops=sum(CROPDAMAGE))
+crops <- crops[order(crops$Crops, decreasing = T),]
+crops <- crops[1:10,]
+```
+
+## 3: Results
+
+### 3.1: Events that are Most Harmful to Population Health
+
+The top 10 weather events affecting the population's health are shown below. 
+
+```{r health impacts}
+head(injury,10)
+head(fatality,10)
+```
+
+Plots of injuries and fatalities demonstrate the disproportionate impact of particular weather events more clearly:
+
+```{r health plots}
+p1 <- ggplot(data=injury, aes(x=reorder(EVTYPE, Injuries), y=Injuries)) +
+      geom_bar(fill="blue",stat="identity")  + coord_flip() + 
+      ylab("Total number of injuries") + xlab("Event type") + 
+      ggtitle("Health impact of weather events in the US 1950 to 2011") +
+      theme(legend.position="none")
+
+p2 <- ggplot(data=fatality, aes(x=reorder(EVTYPE, Fatalities), y=Fatalities)) +
+      geom_bar(fill="red",stat="identity") + coord_flip() +
+      ylab("Total number of fatalities") + xlab("Event type") +
+      theme(legend.position="none")
+
+plot(rbind(ggplotGrob(p1), ggplotGrob(p2), size = "first"), width=800, height=800)
+```
+
+Tornados have clearly had the biggest impact on mortality and morbidity from adverse weather in the US, with injuries way in excess of that expected vs other weather modalities. Fatalities also arise from extremes of normal weather conditions, including heat and cold, winter storms, and flooding, with other spectacular but less devestating events accounting for much small numbers of deaths and injuries.
+
+
+### 3.2: Events that have the Greatest Economic Consequences
+
+The top 10 weather events affecting the economy are shown below. 
+
+```{r ecomonic impact}
+head(property,10)
+head(crops,10)
+```
+
+Plots of total damage to properties and crops again demonstrate that particular events have a disproportionate impact:
+
+```{r economic plots}
+p1 <- ggplot(data=property, aes(x=reorder(EVTYPE, Property), y=Property)) +
+      geom_bar(fill="brown",stat="identity")  + coord_flip() + 
+      ylab("Total damage to property /$") + xlab("Event type") + 
+      ggtitle("Economic impact of weather events in the US 1950 to 2011") +
+      theme(legend.position="none")
+
+p2 <- ggplot(data=crops, aes(x=reorder(EVTYPE, Crops), y=Crops)) +
+      geom_bar(fill="green",stat="identity") + coord_flip() +
+      ylab("Total damage to crops /$") + xlab("Event type") +
+      theme(legend.position="none")
+
+plot(rbind(ggplotGrob(p1), ggplotGrob(p2), size = "first"), width=800, height=800)
+```
+
+Flooding in particular causes much more property damage than for examples tornados, which is the opposite to their mortality impact. The likely cause for this is that tornados are more sudden, with little time to evacuate, whereas floods although more devesatating economically can be predicted and so human life spared.
+
+Crops are more disportionately affected by extremes of climate (drough, cold, and heat) than by sudden events, although hurricains and storms can bring extensive loss of crops (likely through the associated flooding).
