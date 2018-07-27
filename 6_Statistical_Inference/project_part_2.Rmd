@@ -1,0 +1,247 @@
+---
+title: "Statistical inference project part 2: data analysis"
+author: "Nick Plummer"
+date: "27/07/2018"
+output: pdf_document
+---
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(datasets)
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(grid)
+```
+
+## Overiew
+
+For the second half of the project we are going to analyze the `TootGrowth` dataset, from the `datasets` library, observations of tooth growth of Guinea pigs and the effect of dose of vitamin C on this growth.
+
+The `ToothGrowth` dataset consists of 60 observations of 3 variables:
+
+* `len`: Tooth length in millimeters (numeric variable)
+* `supp`: Supplement type (factor variable with levels VC - ascorbic acid - and OJ - orange juice)
+* `dose`: Dose in milligrams (numeric variable, either 0.5, 1, or 2 mcg/day)
+
+We will treat `dose` as a factor variable in the subsequent analysis. This will leave six subgroups of 10 Guinea pigs recieving a specific dose via specific supplement:
+
+```{r echo=FALSE}
+with(ToothGrowth, table(dose, supp))
+```
+
+
+## Question 1 - Exploratory data analysis and summary
+
+```{r echo=FALSE}
+length_mean <- mean(ToothGrowth$len)
+length_sd <- sd(ToothGrowth$len)
+```
+
+The average guinea pig tooth length is `r round(length_mean, 3)` with a standard deviation of `r round(length_sd, 3)`. However we are more interested in exploring differences in tooth length across different combinations of supplement types and dosages.
+
+```{r echo=FALSE, fig.width=8, fig.height=3}
+
+g_len_by_supp <- ggplot(ToothGrowth, aes(supp, len)) + 
+  geom_boxplot() +
+  xlab('Supplement type') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by supplement type')
+
+g_len_by_dose <- ggplot(ToothGrowth, aes(as.factor(dose), len)) + 
+  geom_boxplot() +
+  xlab('Dose (mg)') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by dose level')
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 2, widths = c(0.5, 0.5))))
+print(g_len_by_supp, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(g_len_by_dose, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
+```
+
+The left plot demonstates that guinea pigs recieving orange juice have a greater median tooth length than those recieving ascorbic acid directly. The right plot shows a strong correlation between doseage and tooth length. This can be summaried in a table: 
+
+```{r echo=FALSE}
+
+ToothGrowth %>% group_by(dose) %>% 
+  summarize(
+    q25 = quantile(len, 0.25),
+    median = quantile(len, 0.5),
+    q75 = quantile(len, 0.75)
+  ) %>%
+  as.data.frame
+```
+
+These differences remain when comparing dosages within groups with the same mode of vitamin C delivery, although this appears to be minimal at the highest doses.
+
+```{r echo=FALSE, fig.width=8, fig.height=3}
+
+ggplot(ToothGrowth, aes(as.factor(dose), len)) +
+  geom_boxplot(aes(fill = as.factor(dose))) + 
+  facet_grid(. ~ supp) +
+  xlab('Dose (mg)') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by dose level and supplement type') +
+  theme(legend.position = "none")
+
+```
+
+## Question 2 - Data exploration using hypothesis testing
+
+We will assume that the guinea pigs were randomly assigned to one of the groups (independence of observations) and that they were sampled from a nearly normal population (normality) allowing us to use the t distribution for hypothesis testing.
+
+### 2A - Difference between supplement types
+
+First, we will check if the observed difference in tooth length means between pigs who received their dose using orange juice and those who received their dose via ascorbic acid is statistically significant, via a t-test with unequal variances of the two samples:
+
+
+```{r}
+tidy(t_diff_supp <- t.test(len ~ supp, ToothGrowth, var.equal = FALSE))
+```
+
+p=`r round(t_diff_supp$p.value, 3)` (>0.05) so we fail to reject the null hypothesis, i.e. there is no significant difference in tooth length across the two supplement types  (95% confidence intervals `r round(t_diff_supp$conf.int[1], 3)` to `r round(t_diff_supp$conf.int[2], 3)`)
+
+### 2B - Differences in dose levels
+
+Since we are dealing with three different dose levels we need to apply three pairwise comparison t-tests to cover all factor level combinations.
+
+The table below summarizes the results of the three 3 pairwise comparisons. `comparison` shows which subsets were used for the respective t-test, `statistic` the mean difference with 95% confidence intervals `conf.low` and `conf.high`, and the p value `p.value`.
+
+```{r echo=FALSE}
+
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 2],
+       ToothGrowth$len[ToothGrowth$dose == 1]) %>% 
+  tidy %>%
+  mutate(
+    comparison = "µ2mg - µ1mg"
+  ) %>% 
+  select(11,4,7,8,5)
+  
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 2],
+       ToothGrowth$len[ToothGrowth$dose == 0.5]) %>% 
+  tidy %>%
+  mutate(
+    comparison = 'µ2mg - µ0.5mg'
+  ) %>% 
+  select(11,4,7,8,5) %>%
+  bind_rows(pairwise_results, .)
+
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 1],
+       ToothGrowth$len[ToothGrowth$dose == 0.5]) %>%
+  tidy %>%
+  mutate(
+    comparison = 'µ1mg - µ0.5mg'
+  ) %>% 
+  select(11,4,7,8,5) %>%
+  bind_rows(pairwise_results, .)
+
+print.data.frame(pairwise_results)
+```
+
+In all three cases the p-value is <0.05, meaning there is a significant difference in the effect the dose of vitamin C has on the average tooth length of guinea pigs. 
+
+## Conclusions
+
+We can raise two conclusions from this simplistic analysis:
+- Dose of vitamin C supplementation is strongly linked with tooth length
+- Form of supplementation (ascorbic acid vs orange use) is not significantly linked with tooth length
+
+This is caviat to a number of assumptions:
+- The experiment was done with random assignment of guinea pigs to different dose level categories and supplement type (control for confounders)
+- Members of the sample population, i.e. the 60 guinea pigs, are representative of the entire population of guinea pigs (generalisability)
+- Assumptions of normality and independence for the use of t-tests, with variances assumed to be different for the two groups being compared
+
+Further investigation into the interaction between dose and mode of delivery of vitamin C is likely warrented.
+
+## Appendix (Full source code)
+
+This section includes the source code which was used for generating the results of the analysis.
+
+```{r eval=FALSE}
+# Set up
+knitr::opts_chunk$set(echo = TRUE)
+library(datasets)
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(grid)
+
+
+# Subgroups
+with(ToothGrowth, table(dose, supp))
+
+
+# Basic descriptives
+length_mean <- mean(ToothGrowth$len)
+length_sd <- sd(ToothGrowth$len)
+
+
+# Plot length vs type and length vs dose
+g_len_by_supp <- ggplot(ToothGrowth, aes(supp, len)) + 
+  geom_boxplot() +
+  xlab('Supplement type') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by supplement type')
+
+g_len_by_dose <- ggplot(ToothGrowth, aes(as.factor(dose), len)) + 
+  geom_boxplot() +
+  xlab('Dose (mg)') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by dose level')
+
+grid.newpage()
+pushViewport(viewport(layout = grid.layout(1, 2, widths = c(0.5, 0.5))))
+print(g_len_by_supp, vp = viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(g_len_by_dose, vp = viewport(layout.pos.row = 1, layout.pos.col = 2))
+
+
+# Plot length vs dose by type
+ToothGrowth %>% group_by(dose) %>% 
+  summarize(
+    q25 = quantile(len, 0.25),
+    median = quantile(len, 0.5),
+    q75 = quantile(len, 0.75)
+  ) %>%
+  as.data.frame
+
+ggplot(ToothGrowth, aes(as.factor(dose), len)) +
+  geom_boxplot(aes(fill = as.factor(dose))) + 
+  facet_grid(. ~ supp) +
+  xlab('Dose (mg)') +
+  ylab('Tooth length (mm)') +
+  ggtitle('Tooth length by dose level and supplement type') +
+  theme(legend.position = "none")
+
+
+# Effect of supplement type
+tidy(t_diff_supp <- t.test(len ~ supp, ToothGrowth, var.equal = FALSE))
+
+
+# Multiple t-test
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 2],
+       ToothGrowth$len[ToothGrowth$dose == 1]) %>% 
+  tidy %>%
+  mutate(
+    comparison = "µ2mg - µ1mg"
+  ) %>% 
+  select(11,4,7,8,5)
+  
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 2],
+       ToothGrowth$len[ToothGrowth$dose == 0.5]) %>% 
+  tidy %>%
+  mutate(
+    comparison = 'µ2mg - µ0.5mg'
+  ) %>% 
+  select(11,4,7,8,5) %>%
+  bind_rows(pairwise_results, .)
+
+pairwise_results <- t.test(ToothGrowth$len[ToothGrowth$dose == 1],
+       ToothGrowth$len[ToothGrowth$dose == 0.5]) %>%
+  tidy %>%
+  mutate(
+    comparison = 'µ1mg - µ0.5mg'
+  ) %>% 
+  select(11,4,7,8,5) %>%
+  bind_rows(pairwise_results, .)
+```
