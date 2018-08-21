@@ -1,0 +1,99 @@
+---
+title: "Regression Models project: Exploration of factors affecting MPG"
+author: "Nick Plummer"
+date: "20/08/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xtable)
+data(mtcars)
+```
+
+## Exectutive Summary
+
+Analysis of the `mtcars` dataset, examining the fuel efficiency and 10 aspects of design and performance for 32 cars produced in 1973-1974, demonstrated that cars with a manual transmission (n=13) were on average 7.2mpg more efficient than automatic cars (n=19). However, transmission type is not a particularly good predictor of fuel efficiency, with the number of cylinders and weight of the vehicle both being much stronger predictors of fuel efficiency than transmission type.
+
+## Exploratory analysis
+
+### MPG vs transmission
+```{r results="asis"}
+data(mtcars)
+fit0 <- lm(mpg ~ am, data = mtcars)
+print(xtable(fit0), comment=FALSE)
+```
+There is a straightforward linear relationship between efficiency and transmission type (p<0.001), with manual cars' mean efficiency 7.25 mpg higher than automatic. The low R`^2` means transmission only accounts for 34% of the variability in efficiency in this model.
+
+### MPG vs other factors
+
+We can use an analysis of variance model (calls `lm` for each stratum) to compare all possible preductor variables (removing `qsec`, time to cover 1/4 mile, as a dependent variable). However there will potentially be correlation between variables (e.g. a car with more cylinders is likely to develop more horsepower), which can be assessed by plotting the mtcars dataset, and using `cor` matrices (see appendix for table and plot).
+
+```{r results="asis"}
+cor <- cor(mtcars)
+cor[upper.tri(cor)] <- NA
+# plot(mtcars)
+# print(xtable(cor), comment=FALSE)
+```
+
+This demonstrates a strong relationship between displacement and cylinders (0.9), displacement and weight (0.89) and weight and cylinders (0.78). A link between displacment and cylinders seems physically plausible; the correlation with weight more due to heavier cars requiring a larger engine.
+
+```{r results="asis"}
+# Set factor variables correctly
+mtcars$cyl <- factor(mtcars$cyl)
+mtcars$vs <- factor(mtcars$vs, labels=c("V-engine", "Straight engine"))
+mtcars$gear <- factor(mtcars$gear)
+mtcars$carb <- factor(mtcars$carb)
+mtcars$am <- factor(mtcars$am,labels=c('Automatic','Manual'))
+
+# Run aov
+all_fit <- aov(mpg ~ .-qsec, data = mtcars)
+print(xtable(all_fit), comment=FALSE)
+```
+
+The analysis of varience model suggests that `cyl` (number of cylinders), `hp` (horsepower) and `disp` (engine displacement in cubic inches) seem most strongly correlated with MPG (p<0.05), 
+
+The next step will be to build models using combinations of the variables identified in the previous section, and including the link with transmission type.
+
+```{r}
+fit1 <- lm(mpg ~ cyl, data=mtcars)
+fit2 <- lm(mpg ~ wt, data = mtcars)
+fit3 <- lm(mpg ~ cyl + wt, data = mtcars)
+fit4 <- lm(mpg ~ disp, data = mtcars)
+fit5 <- lm(mpg ~ disp + cyl, data = mtcars)
+fit6 <- lm(mpg ~ disp + cyl + wt, data = mtcars)
+```
+
+The model with the highest adjusted R squared value is `fit3`, which models fuel efficiency as a function of number of cyclinders and weight (R`^2` = `r summary(fit3)$adj.r.squared`), lower than models which include displacement. This agrees with our previous analysis that although cylinders, weight and displacement all have a signficant relationship to fuel efficency, displacment is strongly related to cylinders so is a confounder.
+
+```{r results="asis"}
+fit7 <- lm(mpg ~ cyl + wt +am, data = mtcars)
+print(xtable(fit7), comment=FALSE)
+```
+
+Addition of a transmission term to the model decreases its accuracy (R`^2` = `r summary(fit7)$adj.r.squared`). The coefficient for transmission type is decreased from that in `fit0`, predicting that a car with a manual transmission would have an improved fuel efficiency of 0.18 mpg over an automatic transmission with the same number of cylinders and weight.
+
+## Appendix
+
+### MPG vs transmission
+```{r, fig.cap="MPG vs transmission"}
+boxplot(mpg ~ am, data = mtcars, 
+  xlab="Transmission (0 = automatic, 1 = manual)", 
+  ylab="Miles/(US) gallon",
+  main="MPG vs Transmission")
+```
+
+### MPG vs other factors
+
+```{r, fig.cap="Graphical representation of correlations within mtcars"}
+plot(mtcars)
+```
+
+```{r results="asis", fig.cap="Correlations within mtcars"}
+print(xtable(cor), comment=FALSE)
+```
+
+```{r, fig.cap="Diagnostic plots of residuals for model 3"}
+par(mfrow=c(2,2)) 
+plot(fit3)
+```
