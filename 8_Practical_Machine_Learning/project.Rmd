@@ -1,0 +1,162 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Nick Plummer"
+date: "11/09/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive summary
+We aim to predict how well an exercise (in our project specifically is barbell lifts) is done according to a set of variables that have been derived using sensors on the body (belt, forearm, arm, and dumbell) of six participants.
+
+The objective is to correctly predict the variable ```classe```, which indicates how well the exercise is performed. ```A``` indicates that the exercise was performed flawlessly, while ```B``` to ```E``` indicate that a mistake was performed.
+
+Steps include:
+
+1. Preparation by loading and sanitising data
+2. Application of machine learning algorithms to training dataset to estimate accuracy
+3. Application of the best model to the test set to predict the type of performance against twenty instances of barbell lifting.
+
+## Preparation
+
+```{r}
+# Required libraries
+library(caret)
+library(rpart)
+library(rattle)
+library(gbm)
+library(randomForest)
+library(ggplot2)
+library(gridExtra)
+
+# Get data if not downloaded
+if(!file.exists("pml-training.csv")){
+  fileUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(fileUrl,destfile="./pml-training.csv")
+}
+
+if(!file.exists("pml-testing.csv")){
+  fileUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(fileUrl,destfile="./pml-testing.csv")
+}
+
+# Load datasets
+training <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+
+# Remove variables where all values are NA
+count_NA <- sapply(test, function(y) sum((is.na(y))))
+NA_values <- count_NA[count_NA == 20]
+var_remove <- names(NA_values)
+training <- training[,!(names(training) %in% var_remove)]
+test <- test[,!(names(test) %in% var_remove)]
+
+# Remove non-predictor variables
+var_remove2 <- c('user_name','raw_timestamp_part_1', 'raw_timestamp_part_2', 'cvtd_timestamp', 'new_window', 'num_window', 'X')
+training <- training[,!(names(training) %in% var_remove2)]
+test <- test[,!(names(test) %in% var_remove2)]
+```
+
+## Application of ML algorithms
+
+The training dateset is splitted in to two
+
+* ```sub_train``` to train the models
+* ```sub_test``` for validation
+
+```{r}
+set.seed(69)
+partition <- createDataPartition(training$classe, p = 0.8, list = FALSE)
+sub_train <- training[partition,]
+sub_test <- training[-partition,]
+```
+
+A number of models are then applied and assessed:
+
+1. Decision tree (as data is catagorical)
+2. Generalised boosted regression
+3. Random forest
+
+In each case, a cross-validation with n = 5 is used to improve the results. Each models is trained, then checked with the validation dataset and a confusion matrix produced to assess the accuracy of the model applied on the validation dataset.
+
+### Decision tree
+
+```{r}
+# Display model
+mod_rpart <- train(classe~., data = sub_train, method = "rpart", trControl = trainControl(method = "cv", number = 5))
+mod_rpart
+
+# Graphical decision tree
+fancyRpartPlot(mod_rpart$finalModel)
+
+# Confusion matrix
+pred_rpart <- predict(mod_rpart, sub_test)
+confusionMatrix(sub_test$classe, pred_rpart)
+```
+
+The outcomes are not as definitive as one would hope, in fact, in testing this model on the testing subset it is revealed to have a 49% accuracy i.e. worse than chance! The model is least accurate for outcome D, as could be predicted from the tree plot, where outcome D would not be identified.
+
+```{r}
+plot(varImp(mod_rpart))
+```
+
+The most significant variables were ```pitch_forearm```, ```roll_forearm```, ```roll_belt```, ```magnet_dumbbell_y```, and ```accel_belt_z```.
+
+### Generalised boosted regression
+
+```{r}
+# Display model
+mod_gbm <- train(classe ~ ., data = sub_train, trControl = trainControl(method = "cv", number = 5), method='gbm',  verbose = FALSE)
+mod_gbm
+
+# Confusion matrix
+pred_gbm <- predict(mod_gbm, sub_test)
+confusionMatrix(pred_gbm, sub_test$classe)
+```
+
+The GBM was much more accurate than the decision tree model at 96% accuracy. 
+
+```{r}
+summary(mod_gbm)
+```
+
+The most significant variables were ```roll_belt```, ```pitch_forearm```, ```yaw_belt```, ```magnet_dumbbell_z```,and ```magnet_dumbbell_y```. Three of these are in common with the decision tree model.
+
+### Random forest
+
+```{r}
+# Display model
+mod_rf <- randomForest(classe ~ ., data = sub_train, trControl = trainControl(method = "cv", number = 5))
+mod_rf
+
+# Confusion matrix
+pred_rf <- predict(mod_rf, sub_test)
+confusionMatrix(pred_rf, sub_test$classe)
+```
+
+The random forest model has a 99.4% accuracy, far superior to the previous two methods. The specificity and sensitivity is high for all variables. Preprocessing was considered, but at the risk of overfitting the model was not tested due to the accuracy already being over 99%.
+
+The most significant variables were ```roll_belt```, ```yaw_belt```, ```pitch_forearm```, ```magnet_dumbbell_z```,and ```magnet_dumbbell_y```, matching that found through GBM. It's interesting to plot these against one another to demonstrate how intricate this data is, explaining why the discrete decision tree model was so poorly accurate. A few examples are shown below.
+
+```{r}
+p1 <- qplot(roll_belt, yaw_belt, colour=classe, data=sub_train)
+p2 <- qplot(roll_belt, pitch_forearm, colour=classe, data=sub_train)
+p3 <- qplot(roll_belt, magnet_dumbbell_z, colour=classe, data=sub_train)
+grid.arrange(p1, p2, p3, ncol=3)
+```
+
+## Prediction
+
+```{r}
+new_pred <- predict(mod_rf, test, type = "class")
+new_pred
+```
+
+## Conclusion
+
+Random forest was the superior model for prediction of exercise quality compared to decision trees using ```rpart```, and was an incremental improvement over a generalised boosted regression model. This makes intuitive sense as the nominal categories were dependent not only on various variables but also the interaction between them, with more nuance than could be accounted for by a simple decision model. The RF model had over 99% accuracy and fitted well to other subsamples of the data. However, the algorithm may not have as high of accuracy on other samples, particularly ones with different subjects.
+
+In all models classes ```C``` and ```D``` were the most difficult to predict. This again makes intuitive sense as both are lifting the dumbbell approximately halfway, and so would be the hardest to distinguish.
