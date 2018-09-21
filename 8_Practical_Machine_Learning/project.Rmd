@@ -107,7 +107,7 @@ The most significant variables were ```pitch_forearm```, ```roll_forearm```, ```
 
 ### Generalised boosted regression
 
-```{r}
+```{r, cache}
 # Display model
 mod_gbm <- train(classe ~ ., data = sub_train, trControl = trainControl(method = "cv", number = 5), method='gbm',  verbose = FALSE)
 mod_gbm
