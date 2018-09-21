@@ -1,0 +1,12 @@
+name: DDP_Project
+title: DDP_Project
+username:
+account: nickopotamus
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 460888
+bundleId: 1597662
+url: https://nickopotamus.shinyapps.io/DDP_Project/
+when: 1537527018.12727
+asMultiple: FALSE
+asStatic: FALSE

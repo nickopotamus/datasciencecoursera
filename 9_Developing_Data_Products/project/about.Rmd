@@ -1,0 +1,13 @@
+---
+title: "About this Application"
+author: "Nick Plummer"
+date: "21/09/2018"
+output: html_document
+---
+
+This application is a submission for the Developing Data Products Coursera course project. 
+
+Uses a random forests prediction model trained on the 'iris' databset to classify a flower based on septal and petal length and width.
+
+Use the sliders to set the attributes of your flower and press "Classify your flower" to apply the prediction model and output probabilities of your flower belonging to each of the three species of iris.
+

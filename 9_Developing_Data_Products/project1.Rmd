@@ -1,0 +1,20 @@
+---
+title: "Developing Data Products - Project 1"
+author: "Nick Plummer"
+date: "11/09/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(leaflet)
+
+my_map <- leaflet() %>%
+        addTiles() %>%
+        addMarkers(lat = 53.3492, lng = -1.8096,
+                   popup = "Mam Tor")
+my_map
+```

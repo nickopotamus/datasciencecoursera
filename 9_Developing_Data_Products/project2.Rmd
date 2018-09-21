@@ -1,0 +1,25 @@
+---
+title: "Developing Data Products - Project 2"
+author: "Nick Plummer"
+date: "12/09/2018"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(plotly)
+```
+
+## Plot of number of diamonds per carat
+
+```{r plot, fig.align='center'}
+gg <- ggplot(diamonds, aes(carat)) +
+  geom_histogram(binwidth = 0.1)
+p <- ggplotly(gg)
+p
+```
+
+## In conclusion
+
+- Any questions?
+- @nickopotamus on Twitter
