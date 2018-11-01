@@ -1,0 +1,82 @@
+```{r}
+library(stringi)      # string handling
+library(stringr)      # wrappers for stringi
+library(openNLP)      # OpenNLP interface
+library(DT)           # Java wrapper for data tables
+library(RWekajars)
+library(qdap)         # Quantitative discourse analysis
+library(qdapDictionaries)
+library(qdapRegex)
+library(qdapTools)
+library(slam)         # Arrays/matrices
+library(googleVis)    # Google charts
+```
+
+
+
+```{r, eval=FALSE, echo=TRUE}
+ngramTokenizer <- function(theCorpus, ngramCount) {
+        ngramFunction <- NGramTokenizer(theCorpus, 
+                                Weka_control(min = ngramCount, max = ngramCount, 
+                                delimiters = " \\r\\n\\t.,;:\"()?!"))
+        ngramFunction <- data.frame(table(ngramFunction))
+        ngramFunction <- ngramFunction[order(ngramFunction$Freq, 
+                                             decreasing = TRUE),][1:10,]
+        colnames(ngramFunction) <- c("String","Count")
+        ngramFunction
+}
+```
+
+By the usage of the tokenizer function for the *n*-grams a distribution of the following top 10 words and word combinations can be inspected. Unigrams are single words, while bigrams are two word combinations and trigrams are three word combinations.
+
+### Top Unigrams
+```{r, results="asis"}
+unigram <- readRDS("./unigram.RDS")
+unigramPlot <- gvisColumnChart(unigram, "String", "Count",                  
+                            options=list(legend="none"))
+
+print(unigramPlot, "chart")
+```
+
+### Top Bigrams
+```{r, results="asis"}
+bigram <- readRDS("./bigram.RDS")
+bigramPlot <- gvisColumnChart(bigram, "String", "Count",                  
+                            options=list(legend="none"))
+
+print(bigramPlot, "chart")
+```
+
+### Top Trigrams
+```{r, results="asis"}
+trigram <- readRDS("./trigram.RDS")
+trigramPlot <- gvisColumnChart(trigram, "String", "Count",                  
+                            options=list(legend="none"))
+
+print(trigramPlot, "chart")
+```
+
+
+# Interesting Findings
+
++ Loading the dataset costs a lot of time. The processing is time consuming because of the huge file size of the dataset. By avoiding endless runtimes of the code, it was indispensable to create a data sample for text mining and tokenization. Nedless to say, this workaround decreases the accuracy for the subsequent predictions.
+
++ Removing all stopwords from the corpus is recommended, but, of course, stopwords are a fundamental part of languages. Therefore, consideration should be given to include these stop words in the prediction application again.
+
++ The text mining algorithm needs to be adjusted, so to speak a kind of fine-tuning. As seen in the chart of the top trigrams some words severely curtailed. For example, the second most common trigram is *presid barack obama* instead of *president barack obama*.
+
+# Next Steps For The Prediction Application
+
+As already noted, the next step of the capstone project will be to create a prediction application. 
+To create a smooth and fast application it is absolutely necessary to build a fast prediction algorithm. This is also means, I need to find ways for a faster processing of larger datasets. Next to that,  increasing the value of n for n-gram tokenization will improve the prediction accuracy. All in all a shiny application will be created which will be able to predict the next word a user wants to write.
+
+# All Used Code Scripts
+
+All used code snippets to generate this report can be viewed in this [repository](https://github.com/mhnierhoff/CapstoneCoursera/tree/master/MilestoneReport).
+
+# Session Informations
+```{r}
+sessionInfo()
+```
+
+

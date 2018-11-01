@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/422734/ddc06b0ed9fa4135bd0ba943503f182c
+bundleId: https://api.rpubs.com/api/v1/document/422734/ddc06b0ed9fa4135bd0ba943503f182c
+url: http://rpubs.com/nickopotamus/422734
+when: 1539707043.16568

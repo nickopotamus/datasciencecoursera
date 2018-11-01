@@ -1,0 +1,219 @@
+---
+title: "Data Science Capstone Project: Milestone Report"
+author: "Nick Plummer"
+date: "16/10/2018"
+output: html_document
+---
+
+# Introduction
+
+This is the first milestone report for the [Coursea Data Science Specialisation](https://www.coursera.org/specializations/jhu-data-science) Capstone Project. It addresses the process of extracting data from the [Heliohost Corpora](http://www.corpora.heliohost.org), cleaning this ready for data mining, and the process of text mining into n-grams to prepare for future work predicting text.
+
+### System setup
+
+```{r, echo=FALSE, eval=TRUE}
+setwd("~/Dropbox/git/datasciencecoursera/10_Capstone")
+```
+```{r, results='hide', message=FALSE, warning=FALSE, echo=TRUE, eval=TRUE}
+library(NLP)          # NLP infrastructure
+library(tm)           # Text mining
+library(rJava)        # R-Java interface
+library(RWeka)        # Tokeniser - create unigrams, bigrams, trigrams
+library(ggplot2)      # Visualisation
+library(wordcloud)    # Word clouds
+library(RColorBrewer) # Palattes
+library(googleVis)    # Google charts
+```
+
+Note I (and others) have experienced issues on Mac using ```rJava``` - [see this link](https://zhiyzuo.github.io/installation-rJava/) if getting "unable to load shared object" errors - and ```pandoc``` breaking with ```googleVis``` - solution is to install update ```pandoc``` via ```Homebrew```.
+
+# Data Processing
+
+```{r, eval=FALSE, echo=TRUE}
+# Download the complete dataset 
+fileURL <- "http://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+download.file(fileURL, destfile = "Dataset.zip", method = "curl")
+unlink(fileURL)
+unzip("Dataset.zip")
+
+# Load original US English datasets
+blogs <- readLines("./final/en_US/en_US.blogs.txt", encoding = "UTF-8", skipNul=TRUE)
+news <- readLines("./final/en_US/en_US.news.txt", encoding = "UTF-8", skipNul=TRUE)
+twitter <- readLines("./final/en_US/en_US.twitter.txt", encoding = "UTF-8", skipNul=TRUE)
+```
+
+### Aggregate data sample
+
+In order to enable faster data processing, a data sample using 5000 words from each of the three sources was generated, and saved as a text file for future reference.
+
+```{r, eval=FALSE, echo=TRUE}
+set.seed(69)
+sample_size = 5000
+
+sampleTwitter <- twitter[sample(1:length(twitter),sample_size)]
+sampleNews <- news[sample(1:length(news),sample_size)]
+sampleBlogs <- blogs[sample(1:length(blogs),sample_size)]
+
+textSample <- c(sampleTwitter,sampleNews,sampleBlogs)
+writeLines(textSample, "./milestone/textSample.txt")
+rm(sampleTwitter, sampleNews, sampleBlogs)
+```
+
+
+# Summary Statistics
+
+Summary statistics were calculated as below:
+
+```{r, eval=FALSE, echo=TRUE}
+# Filesize
+blogsFile <- file.info("./final/en_US/en_US.blogs.txt")$size / 1024.0 / 1024.0
+newsFile <- file.info("./final/en_US/en_US.news.txt")$size / 1024.0 / 1024.0
+twitterFile <- file.info("./final/en_US/en_US.twitter.txt")$size / 1024.0 / 1024.0
+sampleFile <- file.info("./milestone/textSample.txt")$size / 1024.0 / 1024.0
+
+# Length (lines)
+blogsLength <- length(blogs)
+newsLength <- length(news)
+twitterLength <- length(twitter)
+sampleLength <- length(textSample)
+
+# Total words
+blogsWords <- sum(sapply(gregexpr("\\S+", blogs), length))
+newsWords <- sum(sapply(gregexpr("\\S+", news), length))
+twitterWords <- sum(sapply(gregexpr("\\S+", twitter), length))
+sampleWords <- sum(sapply(gregexpr("\\S+", textSample), length))
+
+# Build summary table
+fileSummary <- data.frame(
+  fileName = c("Blogs","News","Twitter", "Sample"),
+  fileSize = c(round(blogsFile, digits = 1), 
+               round(newsFile, digits = 1), 
+               round(twitterFile, digits = 1),
+               round(sampleFile, digits = 1)),
+  lineCount = c(blogsLength, newsLength, twitterLength, sampleLength),
+  wordCount = c(blogsWords, newsWords, twitterWords, sampleLength)                  
+  )
+colnames(fileSummary) <- c("File", "Size /Mb", "Lines", "Words")
+
+# Tidy up
+rm(blogsFile, blogsLength, blogsWords, newsFile, newsLength, newsWords, twitterFile, twitterLength, twitterWords, sampleFile, sampleLength, sampleWords)
+saveRDS(fileSummary, file = "./milestone/fileSummary.Rda")
+```
+
+These summaries can be displayed as a table, and as a word cloud usually of the aggregated sample file to provide an overview of word frequencies. 
+
+```{r, eval=TRUE, echo=FALSE}
+setwd("~/Dropbox/git/datasciencecoursera/10_Capstone")
+fileSummary <- readRDS("./milestone/fileSummary.Rda")
+finalCorpus <- readRDS("./milestone/finalCorpus.Rds")
+knitr::kable(fileSummary)
+```
+
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
+TDM <- TermDocumentMatrix(finalCorpus)
+wCloud <- as.matrix(TDM)
+v <- sort(rowSums(wCloud),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+wordcloud(d$word,d$freq,
+  c(5,.3),50,
+  random.order=FALSE,
+  colors=brewer.pal(8, "Spectral"))
+```
+
+# Building A Clean Text Corpus
+
+Sample data was cleaned using ```tm``` to create a clean text corpus for subsequent processing using the following workflow:
+
+1. Convert to all lower case
+2. Remove punctuation and whitespace
+3. Discard numbers and urls
+4. Erase all stop and [profanity](http://www.cs.cmu.edu/~biglou/resources/) words
+
+```{r, eval=FALSE, echo=TRUE}
+textSampleFile <- file("./milestone/textSample.txt")
+textSample <- readLines(textSampleFile)
+close(textSampleFile)
+cleanSample <- VCorpus(VectorSource(textSample))
+
+# Convert all to lower case
+cleanSample <- tm_map(cleanSample, content_transformer(tolower), lazy=TRUE)
+
+# Remove puctuation and whitespace
+cleanSample <- tm_map(cleanSample, content_transformer(removePunctuation), preserve_intra_word_dashes=TRUE)
+cleanSample <- tm_map(cleanSample, stripWhitespace)
+
+# Discard numbers and URLs
+cleanSample <- tm_map(cleanSample, content_transformer(removeNumbers))
+removeURL <- function(x) gsub("http[[:alnum:]]*", "", x) 
+cleanSample <- tm_map(cleanSample, content_transformer(removeURL))
+
+# Remove stop words and profanity
+cleanSample <- tm_map(cleanSample, removeWords, stopwords("english"))
+profanityWords <- read.table("./milestone/profanityWords.txt", header = FALSE)
+cleanSample <- tm_map(cleanSample, removeWords, profanityWords)
+
+# Saving the final corpus
+saveRDS(cleanSample, file = "./milestone/finalCorpus.Rds")
+finalCorpus <- readRDS("./milestone/finalCorpus.Rds")
+finalCorpusDF <- data.frame(text = unlist(sapply(finalCorpus, `[`, "content")), stringsAsFactors = FALSE)
+```
+
+# N-gram tokenization
+
+The next step breaks the sentences down into "n-grams" via the process of tokenization. In Natural Language Processing (NLP) a n-gram is a contiguous sequence of n items from a given sequence of text or speech. Unigrams or 1-grams are single words, bigrams or 2-grams two word combinations, trigrams or 3-grams three word combinations, and so on.
+
+We used the tokeniser method from ```RWeka``` in the following generic function to extract n-grams from the cleaned sample text corpus:
+
+```{r, eval=FALSE, echo=TRUE}
+ngramTokenizer <- function(theCorpus, ngramCount) {
+  ngramFunction <- NGramTokenizer(theCorpus, 
+    Weka_control(min = ngramCount, max = ngramCount, 
+    delimiters = " \\r\\n\\t.,;:\"()?!"))
+  ngramFunction <- data.frame(table(ngramFunction))
+  ngramFunction <- ngramFunction[order(ngramFunction$Freq, 
+                   decreasing = TRUE),][1:10,]
+  colnames(ngramFunction) <- c("String","Count")
+  ngramFunction
+}
+
+# Application to specific n-grams
+unigram <- ngramTokenizer(finalCorpusDF, 1)
+saveRDS(unigram, file = "./milestone/unigram.Rds")
+bigram <- ngramTokenizer(finalCorpusDF, 2)
+saveRDS(bigram, file = "./milestone/bigram.Rds")
+trigram <- ngramTokenizer(finalCorpusDF, 3)
+saveRDS(trigram, file = "./milestone/trigram.Rds")
+```
+
+### Most common n-grams in sample data set
+
+Applying the tokenizer function to 1, 2, and 3-grams the most common 10 combinations can be inspected graphically:
+
+```{r, results="asis"}
+# 1-grams
+unigram <- readRDS("./unigram.RDS")
+unigramPlot <- gvisColumnChart(unigram, "String", "Count", options=list(legend="none"))
+print(unigramPlot, "chart")
+```
+
+```{r, results="asis"}
+# 2-grams
+bigram <- readRDS("./bigram.RDS")
+bigramPlot <- gvisColumnChart(bigram, "String", "Count", options=list(legend="none"))
+print(bigramPlot, "chart")
+```
+
+```{r, results="asis"}
+# 3-grams
+trigram <- readRDS("./trigram.RDS")
+trigramPlot <- gvisColumnChart(trigram, "String", "Count", options=list(legend="none"))
+print(trigramPlot, "chart")
+```
+
+# Next steps
+
+It's clear that loading and handling the dataset costs a lot of time, due to its size. The use of a sample dataset was therefore essential to allow text mining and tokenization over a reasonable timescale, however this workaround decreases the accuracy for and subsequent predictions based on these.
+
+Removing all stopwords from the corpus is recommended, however stopwords (and, to an extent, profanity) are a fundamental part of languages. Therefore, consideration should be given to include these stop words in the prediction application again, and whether replacement of profanity with contextually appropriate non-curse words may improve accurary of what become otherwise disjointed sentences..
+
+The next phase of the capstone project will be to create a prediction application based on this handling of n-grams. This will require speedier and lighter processing of larger datasets to enable a faster prediction algorithm to be designed. Increasing the value of n for n-gram tokenization will improve the prediction accuracy at the expense of slowing the algorithm. 
