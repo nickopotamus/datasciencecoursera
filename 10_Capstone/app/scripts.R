@@ -29,14 +29,10 @@ sampleTwitter <- sampletext(twitter, portion)
 sampleNews <- sampletext(news, portion)
 sampleBlogs <- sampletext(blogs, portion)
 
-#sampleTwitter <- twitter[sample(1:length(twitter),sample_size)]
-#sampleNews <- news[sample(1:length(news),sample_size)]
-#sampleBlogs <- blogs[sample(1:length(blogs),sample_size)]
-
 textSample <- c(sampleTwitter,sampleNews,sampleBlogs)
 writeLines(textSample, "./data/textsample/textSample.txt")
-#rm(sampleTwitter, sampleNews, sampleBlogs)
-#rm(twitter, news, blogs)
+rm(sampleTwitter, sampleNews, sampleBlogs)
+rm(twitter, news, blogs)
 
 # Data Cleansing 
 cleanSample <- VCorpus(DirSource("./data/textSample", encoding = "UTF-8"))
@@ -49,7 +45,7 @@ cleansing <- function (textcp) {
   textcp <- tm_map(textcp, stripWhitespace)
   textcp <- tm_map(textcp, content_transformer(removeNumbers))
   textcp <- tm_map(textcp, content_transformer(removeURL))
-  textcp <- tm_map(textcp, removeWords, stopwords("english"))
+# textcp <- tm_map(textcp, removeWords, stopwords("english"))
   textcp <- tm_map(textcp, removeWords, profanityWords)
   textcp
 }

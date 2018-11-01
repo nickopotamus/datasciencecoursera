@@ -1,0 +1,12 @@
+name: capstone
+title: capstone
+username:
+account: nickopotamus
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 546881
+bundleId: 1676641
+url: https://nickopotamus.shinyapps.io/capstone/
+when: 1541084599.8121
+asMultiple: FALSE
+asStatic: FALSE
